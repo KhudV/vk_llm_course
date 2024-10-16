@@ -36,9 +36,16 @@ class Model(nn.Module):
             dropout: float = 0.0
     ):
         super().__init__()
-        self.embeddings = nn.Embedding(<YOUR CODE HERE>)
-        self.lstm = nn.LSTM(<YOUR CODE HERE>)
-        self.logits = nn.Linear(<YOUR CODE HERE>)
+        self.embeddings = nn.Embedding(vocab_size, emb_size)
+        self.lstm = nn.LSTM(
+            input_size=emb_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout if num_layers > 1 else 0.0,
+            batch_first=True
+          )
+        self.logits = nn.Linear(hidden_size, vocab_size)
+
 
     def forward(
             self,
@@ -57,4 +64,7 @@ class Model(nn.Module):
                 - Логиты (предсказания для каждого слова в последовательности) размером (batch_size, seq_len, vocab_size).
                 - Пара скрытых состояний (h_n, c_n), где h_n и c_n — это последние скрытые и клеточные состояния LSTM.
         """
-        <YOUR CODE HERE>
+        embedded = self.embeddings(x)  # (batch_size, seq_len, emb_size)
+        lstm_out, hx = self.lstm(embedded, hx)  # lstm_out: (batch_size, seq_len, hidden_size)
+        logits = self.logits(lstm_out)  # (batch_size, seq_len, vocab_size)
+        return logits, hx

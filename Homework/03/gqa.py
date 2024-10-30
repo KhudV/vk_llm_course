@@ -25,31 +25,22 @@ def scaled_dot_product_gqa(
 
     scale = hidden_dim ** -0.5
 
-    # Group heads to share the key and value if necessary
-    if num_heads % num_kv_heads != 0:
-        raise ValueError("Number of heads should be divisible by number of key-value heads.")
+    if num_kv_heads > num_heads:
+        raise ValueError("Number of kv heads should be less or equal then number of heads.")
 
     heads_per_kv_head = num_heads // num_kv_heads
 
-    # Reshape query for grouped attention
     query = query.view(batch_size, seq_len, num_kv_heads, heads_per_kv_head, hidden_dim)
-    key = key.unsqueeze(3)  # Add dimension for heads_per_kv_head
+    key = key.unsqueeze(3)
     value = value.unsqueeze(3)
 
-    # Compute scaled dot product attention scores
     attn_scores = torch.einsum("bthqd,btkqd->bthqk", query, key) * scale
-
-    # Apply causal mask if needed
     if is_causal:
         causal_mask = torch.tril(torch.ones(seq_len, kv_seq_len, device=query.device)).bool()
         attn_scores = attn_scores.masked_fill(~causal_mask, float("-inf"))
-
-    # Compute attention weights
     attn_weights = torch.softmax(attn_scores, dim=-1)
-
     attn_output = torch.einsum("bthqk,btkqd->bthqd", attn_weights, value)
     attn_output = attn_output.reshape(batch_size, seq_len, num_heads, hidden_dim)
-
     attn_weights = attn_weights.reshape(batch_size, num_heads, seq_len, kv_seq_len)
 
     if need_weights:

@@ -15,7 +15,26 @@ class MinHashLSH(MinHash):
         Возвращает массив из бакетов, где каждый бакет представляет собой N строк матрицы сигнатур.
         '''
         # TODO:
-        return 
+        num_rows = minhash.shape[0]
+        if self.num_buckets > num_rows:
+            self.num_buckets = num_rows
+        rows_per_bucket = num_rows // self.num_buckets
+        extra_rows = num_rows % self.num_buckets
+        buckets = []
+        current_row = 0
+        for i in range(extra_rows):
+            end_row = current_row + rows_per_bucket +1
+            bucket = minhash[current_row:end_row, :]
+            buckets.append(bucket)
+            current_row = end_row
+
+        for i in range(self.num_buckets - extra_rows):
+            end_row = current_row + rows_per_bucket
+            bucket = minhash[current_row:end_row, :]
+            buckets.append(bucket)
+            current_row = end_row
+        buckets = np.array(buckets, dtype=object)
+        return buckets
     
     def get_similar_candidates(self, buckets) -> list[tuple]:
         '''
@@ -24,6 +43,18 @@ class MinHashLSH(MinHash):
         Возвращает список из таплов индексов похожих документов.
         '''
         # TODO:
+        similar_candidates= []
+        for bucket in buckets:
+            num_docs = bucket.shape[1]
+            seen_hashes = {}
+            for doc_idx in range(num_docs):
+                hash_value = tuple(bucket[:, doc_idx])
+                if hash_value in seen_hashes:
+                    for prev_doc_idx in seen_hashes[hash_value]:
+                        similar_candidates.append((prev_doc_idx, doc_idx))                
+                if hash_value not in seen_hashes:
+                    seen_hashes[hash_value] = []
+                seen_hashes[hash_value].append(doc_idx)
         return similar_candidates
         
     def run_minhash_lsh(self, corpus_of_texts: list[str]) -> list[tuple]:

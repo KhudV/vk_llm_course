@@ -1,3 +1,8 @@
+from scripts.compute_reward import compute_reward
+from torch import no_grad
+
+
+
 def generate_with_reward_guidance(
         main_model, main_tokenizer,
         reward_model, reward_tokenizer,
@@ -24,5 +29,31 @@ def generate_with_reward_guidance(
     """
 
     # <YOUR CODE HERE>
+    input_text = "1"
+    inputs = main_tokenizer(
+        input_text, 
+        return_tensors='pt', 
+    ).to(device)
 
-    raise NotImplementedError
+    generated_texts = []
+    for _ in range(N):
+        with no_grad():
+            output = main_model.generate(
+                input_ids=inputs['input_ids'],
+                attention_mask=inputs['attention_mask'],
+                max_length=50,
+                num_return_sequences=1,
+                do_sample=True,
+                top_k=50,
+            )
+        decoded_text = main_tokenizer.decode(output[0])
+        if decoded_text.startswith("tensor(") and decoded_text.endswith(")"):
+            decoded_text = decoded_text[7:-1]
+        generated_texts.append(decoded_text)
+
+    reward_scores = compute_reward(reward_model, reward_tokenizer, generated_texts)
+
+    best_index = reward_scores.argmax().item()
+    best_text = generated_texts[best_index]
+    
+    return best_text

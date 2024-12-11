@@ -1,4 +1,7 @@
 from tqdm.auto import tqdm
+from scripts.compute_reward import compute_reward
+
+
 
 def eval_reward_model(reward_model, reward_tokenizer, test_dataset, target_label, device='cpu'):
     """
@@ -28,11 +31,28 @@ def eval_reward_model(reward_model, reward_tokenizer, test_dataset, target_label
     >>> accuracy = eval_reward_model(my_reward_model, my_reward_tokenizer, test_data, target_label=1)
     >>> print(f"Model accuracy: {accuracy:.2%}")
     """
-
-    raise NotImplementedError
-
     # <YOUR CODE HERE>
+
+    chosen_reviews = [sample['text'] for sample in test_dataset if sample['label'] == target_label]
+    rejected_reviews = [sample['text'] for sample in test_dataset if sample['label'] != target_label]
 
     assert len(chosen_reviews) == len(rejected_reviews)
 
     # <YOUR CODE HERE>
+    correct_count = 0 
+    total_count = len(chosen_reviews)
+
+    batch_size = 8
+    for i in tqdm(range(0, total_count, batch_size), desc="Evaluating"):
+        batch_chosen = chosen_reviews[i: i + batch_size]
+        batch_rejected = rejected_reviews[i: i + batch_size]
+
+
+        reward_chosen = compute_reward(reward_model, reward_tokenizer, batch_chosen)
+        reward_rejected = compute_reward(reward_model, reward_tokenizer, batch_rejected)
+        
+        correct_count += (reward_chosen > reward_rejected).sum().item()
+    
+    accuracy = correct_count / total_count
+    
+    return accuracy

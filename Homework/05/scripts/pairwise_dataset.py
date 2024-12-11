@@ -24,8 +24,8 @@ class IMDBPairwiseDataset(Dataset):
     def __init__(self, imdb, tokenizer, accepted_label):
         super().__init__()
         self.tokenizer = tokenizer
-        self.chosen_texts = # <YOUR CODE HERE>
-        self.rejected_texts = # <YOUR CODE HERE>
+        self.chosen_texts = [sample['text'] for sample in imdb if sample['label'] == accepted_label]
+        self.rejected_texts = [sample['text'] for sample in imdb if sample['label'] != accepted_label]
 
         assert self.chosen_texts, f"no texts with label {accepted_label}"
         # print(f"Found {len(self.chosen_texts)} chosen and {len(self.rejected_texts)} rejected texts, {len(self)} pairs")
@@ -36,14 +36,18 @@ class IMDBPairwiseDataset(Dataset):
         ]
 
     def __len__(self):
-        raise NotImplementedError
-        return # <YOUR CODE HERE>  # all pairs
+        return len(self.chosen_texts) * len(self.rejected_texts)
 
     def __getitem__(self, index: int):
-        # <YOUR CODE HERE>
+        i = index // len(self.rejected_texts)
+        j = index % len(self.rejected_texts)
+        chosen_text, rejected_text = self.chosen_texts[i], self.rejected_texts[j]
+        
+        chosen_encodings = self.tokenizer(chosen_text, padding=False, return_tensors="pt")
+        rejected_encodings = self.tokenizer(rejected_text, padding=False, return_tensors="pt")
         return dict(
-            input_ids_chosen=# <YOUR CODE HERE>,
-            attention_mask_chosen=# <YOUR CODE HERE>,
-            input_ids_rejected=# <YOUR CODE HERE>,
-            attention_mask_rejected=# <YOUR CODE HERE>,
+            input_ids_chosen=chosen_encodings['input_ids'].squeeze(0),
+            attention_mask_chosen=chosen_encodings['attention_mask'].squeeze(0),
+            input_ids_rejected=rejected_encodings['input_ids'].squeeze(0),
+            attention_mask_rejected=rejected_encodings['attention_mask'].squeeze(0),
         )

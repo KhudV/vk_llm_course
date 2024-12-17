@@ -4,6 +4,8 @@ import numpy as np
 import json
 import pickle
 from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
 
 @dataclass
 class Document:
@@ -47,21 +49,32 @@ class Indexer:
           Подсказка: для каждого документа нужно объединить title и text
        3. Сохранить эмбеддинги в self.embeddings
        """
-       pass
+       self.documents = documents
+       texts = [f"{doc.title} {doc.text}" for doc in documents]
+       self.embeddings = self.model.encode(texts, convert_to_tensor=True)
+       for i, doc in enumerate(self.documents):
+           doc.embedding = self.embeddings[i].cpu().numpy()
 
    def save(self, path: str) -> None:
        """
        TODO: Реализовать сохранение индекса
        1. Сохранить self.documents и self.embeddings в pickle файл
        """
-       pass
+       with open(path, 'wb') as f:
+            pickle.dump({
+                "documents": self.documents,
+                "embeddings": self.embeddings.cpu().numpy()
+            }, f)
 
    def load(self, path: str) -> None:
        """
        TODO: Реализовать загрузку индекса
        1. Загрузить self.documents и self.embeddings из pickle файла
        """
-       pass
+       with open(path, 'rb') as f:
+            data = pickle.load(f)
+            self.documents = data['documents']
+            self.embeddings = np.array(data['embeddings'])
 
 class Searcher:
    def __init__(self, index_path: str, model_name: str = 'all-MiniLM-L6-v2'):
@@ -71,7 +84,10 @@ class Searcher:
        2. Инициализировать sentence-transformers
        """
        self.model = SentenceTransformer(model_name)
-       pass
+       with open(index_path, 'rb') as f:
+           data = pickle.load(f)
+           self.documents = data['documents']
+           self.embeddings = np.array(data['embeddings'])
 
    def search(self, query: str, top_k: int = 5) -> List[SearchResult]:
        """
@@ -80,4 +96,17 @@ class Searcher:
        2. Вычислить косинусное сходство между запросом и документами
        3. Вернуть top_k наиболее похожих документов
        """
-       pass
+       query_embedding = self.model.encode(query, convert_to_tensor=True).cpu().numpy()
+       scores = cosine_similarity([query_embedding], self.embeddings)[0]
+       top_indices = np.argsort(scores)[-top_k:][::-1]
+
+       results = [
+            SearchResult(
+                doc_id=self.documents[i].id,
+                score=float(scores[i]),
+                title=self.documents[i].title,
+                text=self.documents[i].text
+            )
+            for i in top_indices
+        ]
+       return results

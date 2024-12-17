@@ -28,7 +28,21 @@ class FAISSSearcher:
             - Обучить индекс (train)
             - Добавить векторы (add)
         """
-        pass
+        self.documents = documents
+        texts = [f"{doc.title} {doc.text}" for doc in documents]
+
+        embeddings = self.model.encode(texts, convert_to_tensor=False).astype('float32')
+
+        faiss.normalize_L2(embeddings)
+
+        n_clusters = int(np.sqrt(len(embeddings)))
+        n_clusters = max(n_clusters, 1)
+
+        self.quantizer = faiss.IndexFlatIP(self.dimension)
+        self.index = faiss.IndexIVFFlat(self.quantizer, self.dimension, n_clusters, faiss.METRIC_INNER_PRODUCT)
+
+        self.index.train(embeddings)
+        self.index.add(embeddings)
 
     def save(self, path: str) -> None:
         """
@@ -38,7 +52,11 @@ class FAISSSearcher:
             - documents
             - индекс (faiss.serialize_index)
         """
-        pass
+        with open(path, 'wb') as f:
+            pickle.dump({
+                "documents": self.documents,
+                "index": faiss.serialize_index(self.index)
+            }, f)
 
     def load(self, path: str) -> None:
         """
@@ -48,7 +66,10 @@ class FAISSSearcher:
             - documents
             - индекс (faiss.deserialize_index)
         """
-        pass
+        with open(path, 'rb') as f:
+            data = pickle.load(f)
+            self.documents = data['documents']
+            self.index = faiss.deserialize_index(data['index'])
 
     def search(self, query: str, top_k: int = 5) -> List[SearchResult]:
         """
@@ -59,7 +80,26 @@ class FAISSSearcher:
         3. Искать через index.search()
         4. Вернуть найденные документы
         """
-        pass
+        query_embedding = self.model.encode(query, convert_to_tensor=False).astype('float32').reshape(1, -1)
+
+        faiss.normalize_L2(query_embedding)
+
+        distances, indices = self.index.search(query_embedding, top_k)
+
+        results = []
+        for i, idx in enumerate(indices[0]):
+            if idx == -1:
+                continue
+            doc = self.documents[idx]
+            results.append(
+                SearchResult(
+                    doc_id=doc.id,
+                    score=float(distances[0][i]),
+                    title=doc.title,
+                    text=doc.text
+                )
+            )
+        return results
 
     def batch_search(self, queries: List[str], top_k: int = 5) -> List[List[SearchResult]]:
         """
@@ -70,4 +110,26 @@ class FAISSSearcher:
         3. Искать через index.search()
         4. Вернуть результаты для каждого запроса
         """
-        pass
+        query_embeddings = self.model.encode(queries, convert_to_tensor=False).astype('float32')
+
+        faiss.normalize_L2(query_embeddings)
+
+        distances, indices = self.index.search(query_embeddings, top_k)
+
+        batch_results = []
+        for q_idx, query_indices in enumerate(indices):
+            results = []
+            for i, idx in enumerate(query_indices):
+                if idx == -1:
+                    continue
+                doc = self.documents[idx]
+                results.append(
+                    SearchResult(
+                        doc_id=doc.id,
+                        score=float(distances[q_idx][i]),
+                        title=doc.title,
+                        text=doc.text
+                    )
+                )
+            batch_results.append(results)
+        return batch_results

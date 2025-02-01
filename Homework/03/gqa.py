@@ -1,4 +1,5 @@
 import torch
+import math
 
 
 def scaled_dot_product_gqa(
@@ -18,32 +19,38 @@ def scaled_dot_product_gqa(
         2-tuple of torch.Tensor:
             - Attention output with shape [batch size; seq len; num heads; hidden dim]
             - (Optional) Attention weights with shape [batch size; num heads; seq len; kv seq len].
-                Only returned if 'need_weights' is True.
+              Only returned if 'need_weights' is True.
     """
     batch_size, seq_len, num_heads, hidden_dim = query.shape
-    _, kv_seq_len, num_kv_heads, _ = key.shape
+    batch_size_kv, kv_seq_len, num_kv_heads, hidden_dim_kv = key.shape
 
-    scale = hidden_dim ** -0.5
+    if num_kv_heads > num_heads or (num_heads % num_kv_heads) != 0:
+        raise ValueError("Number of key/value heads must be <= number of query heads and divide it exactly.")
 
-    if num_kv_heads > num_heads:
-        raise ValueError("Number of kv heads should be less or equal then number of heads.")
+    group_factor = num_heads // num_kv_heads
 
-    heads_per_kv_head = num_heads // num_kv_heads
+    q = query.permute(0, 2, 1, 3)
+    k = key.permute(0, 2, 1, 3)
+    v = value.permute(0, 2, 1, 3)
 
-    query = query.view(batch_size, seq_len, num_kv_heads, heads_per_kv_head, hidden_dim)
-    key = key.unsqueeze(3)
-    value = value.unsqueeze(3)
+    k = k.repeat_interleave(group_factor, dim=1)
+    v = v.repeat_interleave(group_factor, dim=1)
 
-    attn_scores = torch.einsum("bthqd,btkqd->bthqk", query, key) * scale
+    attn_scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(hidden_dim)
+
     if is_causal:
-        causal_mask = torch.tril(torch.ones(seq_len, kv_seq_len, device=query.device)).bool()
-        attn_scores = attn_scores.masked_fill(~causal_mask, float("-inf"))
-    attn_weights = torch.softmax(attn_scores, dim=-1)
-    attn_output = torch.einsum("bthqk,btkqd->bthqd", attn_weights, value)
-    attn_output = attn_output.reshape(batch_size, seq_len, num_heads, hidden_dim)
-    attn_weights = attn_weights.reshape(batch_size, num_heads, seq_len, kv_seq_len)
+        causal_mask = torch.triu(torch.ones(seq_len, kv_seq_len, device=query.device, dtype=torch.bool), diagonal=1)
+        attn_scores = attn_scores.masked_fill(causal_mask, float("-inf"))
 
+    attn_weights = torch.softmax(attn_scores, dim=-1)
+
+    output = torch.matmul(attn_weights, v)
+
+    output = output.permute(0, 2, 1, 3)
     if need_weights:
-        return attn_output, attn_weights
+        return output, attn_weights
     else:
-        return attn_output, None
+        return output, None
+
+
+
